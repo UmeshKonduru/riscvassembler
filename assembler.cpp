@@ -6,6 +6,8 @@
 
 using namespace std;
 
+// Utility Functions
+
 unsigned int clip(unsigned int x, int left, int right) {
     return (x >> right) & ((1 << (left - right + 1)) - 1);
 }
@@ -15,17 +17,18 @@ void trim(string &s) {
     s.erase(s.find_last_not_of(" \t\n") + 1);
 }
 
-class Instruction {
+// Template for converting commands of different formats to machine code
+
+class Instruction { // Parent class for all instructions
 
     public:
-
-        static map<string, Instruction*> commandLookup;
+        static map<string, Instruction*> commandLookup; // See below
         unsigned int opcode;
-        virtual unsigned int toMachineCode() = 0;
-        virtual void setOperands(vector<unsigned int> operands) = 0;
+        virtual unsigned int toMachineCode() = 0; // Convert command to machine code
+        virtual void setOperands(vector<unsigned int> operands) = 0; // Set operands of the command passed as a vector containing registers first and then immediate values
 };
 
-class R : public Instruction {
+class R : public Instruction { // R-Format Instructions
 
     unsigned int rd, funct3, rs1, rs2, funct7;
 
@@ -48,7 +51,7 @@ class R : public Instruction {
         }
 };
 
-class I : public Instruction {
+class I : public Instruction { // I-Format Instructions
 
     unsigned int rd, funct3, rs1, imm;
 
@@ -77,7 +80,7 @@ class I : public Instruction {
         }
 };
 
-class S : public Instruction {
+class S : public Instruction { // S-Format Instructions
 
     unsigned int funct3, rs1, rs2, imm;
 
@@ -101,7 +104,7 @@ class S : public Instruction {
         }
 };
 
-class SB : public Instruction {
+class SB : public Instruction { // SB-Format Instructions
 
     unsigned int funct3, rs1, rs2, imm;
 
@@ -125,7 +128,7 @@ class SB : public Instruction {
         }
 };
 
-class U : public Instruction {
+class U : public Instruction { // U-Format Instructions
 
     unsigned int rd, imm;
 
@@ -145,7 +148,7 @@ class U : public Instruction {
         }
 };
 
-class UJ : public Instruction {
+class UJ : public Instruction { // UJ-Format Instructions
 
     unsigned int rd, imm;
 
@@ -166,7 +169,7 @@ class UJ : public Instruction {
         }
 };
 
-map<string, Instruction*> Instruction::commandLookup = {
+map<string, Instruction*> Instruction::commandLookup = { // Returns the instruction object corresponding to the command name
 
     {"add",    new R(0x33, 0x0, 0x00)},
     {"and",    new R(0x33, 0x7, 0x00)},
@@ -206,20 +209,20 @@ map<string, Instruction*> Instruction::commandLookup = {
     {"jal",    new UJ(0x6f)}
 };
 
-class Assembler {
+class Assembler { // For parsing and converting assembly code to machine code
 
-    class Command {
+    class Command { // Each command is converted to this format after parsing
         public:
             string name;
             vector<unsigned int> operands;
     };
 
-    unsigned int parseRegister(string reg) {
+    unsigned int parseRegister(string reg) { // Convert register name to register number
         reg.erase(0, 1);
         return stoi(reg);
     }
 
-    unsigned int toMachineCode(Command command) {
+    unsigned int toMachineCode(Command command) { // Convert command to machine code
         Instruction* instruction = Instruction::commandLookup[command.name];
         instruction->setOperands(command.operands);
         return instruction->toMachineCode();
@@ -228,7 +231,6 @@ class Assembler {
     public:
 
         static map<string, string> registerLookup;
-
 };
 
 map<string, string> Assembler::registerLookup = {
