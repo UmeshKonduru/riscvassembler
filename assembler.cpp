@@ -214,7 +214,7 @@ class Assembler { // For parsing and converting assembly code to machine code
     class Command { // Each command is converted to this format after parsing
         public:
             string name;
-            vector<unsigned int> operands;
+            vector<unsigned int> operands; // Contains registers (in the order they appear in the command) first and then immediate values
     };
 
     unsigned int parseRegister(string reg) { // Convert register name to register number
