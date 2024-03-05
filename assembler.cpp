@@ -1,4 +1,5 @@
 #include<iostream>
+#include<algorithm>
 #include<sstream>
 #include<vector>
 #include<map>
@@ -259,31 +260,22 @@ class Assembler { // For parsing and converting assembly code to machine code
         return c;
     }
 
-    void clean(string &line) { // Remove comments and extra spaces
-        line = line.substr(0, line.find('#'));
-        trim(line);
-    }
-
-    void parseData();
-    void parseText();
-    void parse(string filename);
-
     void convertData() { // Convert data segment to machine code
         unsigned int address = 0x10000000;
         unsigned int size;
         stringstream ss;
-        string word;
+        string word, label;
 
         for(string line : data) {
             ss << line;
             ss >> word;
             if(word.back() == ':') {
-                addressLookup[word.substr(0, word.find(':'))] = address;
+                label = word.substr(0, word.size() - 1);
+                trim(label);
+                addressLookup[label] = address;
             } else if(word == ".asciiz") {
                 ss >> word;
-                for(char c : word) {
-                    machineCode.push_back({address++, c});
-                }
+                for(char c : word) machineCode.push_back({address++, c});
             } else {
                 size = sizeLookup[word];
                 while(ss >> word) {
@@ -291,6 +283,39 @@ class Assembler { // For parsing and converting assembly code to machine code
                     address += size;
                 }
             }
+        }
+    }
+
+    void clean(string &line) { // Remove comments, commas, parantheses and trailing spaces
+        line = line.substr(0, line.find('#'));
+        trim(line);
+    }
+
+    string extractLabel(string &line) { // Extract label from line
+        if(line.find(':') == string::npos) return "";
+        string label = line.substr(0, line.find(':') + 1);
+        line = line.substr(line.find_last_of(':') + 1);
+        return label;
+    }
+
+
+    void parse(string path) { // Parse the assembly code into a standard format
+
+        ifstream file(path);
+        string line, word;
+        vector<string> *current = &text;
+
+        unsigned int address = 0x10000000;
+        unsigned int pc = 0;
+        
+        while(getline(file, line)) {
+            word = extractLabel(line);
+            if(word != "") labelLookup[word] = pc;
+            clean(line);
+            word = line.substr(0, line.find(' '));
+            if(word == ".data") current = &data;
+            else if(word == ".text") current = &text;
+            else current->push_back(line);
         }
     }
 
