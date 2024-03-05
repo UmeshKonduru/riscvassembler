@@ -218,11 +218,13 @@ class Assembler { // For parsing and converting assembly code to machine code
     };
 
     static map<string, string> registerLookup; // See below
+    static map<string, unsigned int> sizeLookup; // See below
 
     map<string, unsigned int> addressLookup; // Contains the address of each label
     map<string, unsigned int> labelLookup; // Contains the program counter value of each labelLookup
     vector<string> data; // Contains the data section of the assembly code
     vector<string> text; // Contains the text section of the assembly code
+    vector<pair<unsigned int, unsigned int>> machineCode; // Contains the machine code of the text section
 
 
     unsigned int parseRegister(string reg) { // Convert register name to register number
@@ -266,7 +268,31 @@ class Assembler { // For parsing and converting assembly code to machine code
     void parseText();
     void parse(string filename);
 
-    void createLabelLookup();
+    void convertData() { // Convert data segment to machine code
+        unsigned int address = 0x10000000;
+        unsigned int size;
+        stringstream ss;
+        string word;
+
+        for(string line : data) {
+            ss << line;
+            ss >> word;
+            if(word.back() == ':') {
+                addressLookup[word.substr(0, word.find(':'))] = address;
+            } else if(word == ".asciiz") {
+                ss >> word;
+                for(char c : word) {
+                    machineCode.push_back({address++, c});
+                }
+            } else {
+                size = sizeLookup[word];
+                while(ss >> word) {
+                    machineCode.push_back({address, stoi(word)});
+                    address += size;
+                }
+            }
+        }
+    }
 
     public:
 
@@ -309,6 +335,14 @@ map<string, string> Assembler::registerLookup = {
     {"t4", "x29"},
     {"t5", "x30"},
     {"t6", "x31"},
+};
+
+map<string, unsigned int> Assembler::sizeLookup = {
+
+    {".byte", 1},
+    {".half", 2},
+    {".word", 4},
+    {".dword", 8},
 };
 
 int main() { 
