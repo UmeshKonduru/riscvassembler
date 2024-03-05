@@ -25,7 +25,7 @@ class Instruction { // Parent class for all instructions
         static map<string, Instruction*> commandLookup; // See below
         unsigned int opcode;
         virtual unsigned int toMachineCode() = 0; // Convert command to machine code
-        virtual void setOperands(vector<unsigned int> operands) = 0; // Set operands of the command passed as a vector containing registers first and then immediate values
+        virtual void setOperands(vector<unsigned int> operands) = 0; // Set operands of the command passed as a vector containing registers first and then immediate value
 };
 
 class R : public Instruction { // R-Format Instructions
@@ -206,7 +206,7 @@ map<string, Instruction*> Instruction::commandLookup = { // Returns the instruct
     {"auipc",  new U(0x17)},
     {"lui",    new U(0x37)},
 
-    {"jal",    new UJ(0x6f)}
+    {"jal",    new UJ(0x6f)},
 };
 
 class Assembler { // For parsing and converting assembly code to machine code
@@ -214,8 +214,16 @@ class Assembler { // For parsing and converting assembly code to machine code
     class Command { // Each command is converted to this format after parsing
         public:
             string name;
-            vector<unsigned int> operands; // Contains registers (in the order they appear in the command) first and then immediate values
+            vector<unsigned int> operands; // Contains registers (in the order they appear in the command) first and then immediate value
     };
+
+    static map<string, string> registerLookup; // See below
+
+    map<string, unsigned int> addressLookup; // Contains the address of each label
+    map<string, unsigned int> labelLookup; // Contains the program counter value of each labelLookup
+    vector<string> data; // Contains the data section of the assembly code
+    vector<string> text; // Contains the text section of the assembly code
+
 
     unsigned int parseRegister(string reg) { // Convert register name to register number
         reg.erase(0, 1);
@@ -228,9 +236,43 @@ class Assembler { // For parsing and converting assembly code to machine code
         return instruction->toMachineCode();
     }
 
+    Command parseCommand(string command) { // Convert command to Command object
+        Command c;
+        unsigned int imm;
+        stringstream ss(command);
+        string word;
+
+        ss >> word;
+        c.name = word;
+
+        while(ss >> word) {
+            if(word[0] == 'x') {
+                c.operands.push_back(parseRegister(word));
+            } else {
+                imm = stoi(word);
+            }
+        }
+
+        c.operands.push_back(imm);
+        return c;
+    }
+
+    void clean(string &line) { // Remove comments and extra spaces
+        line = line.substr(0, line.find('#'));
+        trim(line);
+    }
+
+    void parseData();
+    void parseText();
+    void parse(string filename);
+
+    void createLabelLookup();
+
     public:
 
-        static map<string, string> registerLookup;
+        Assembler(string filename) {
+            parse(filename);
+        }
 };
 
 map<string, string> Assembler::registerLookup = {
