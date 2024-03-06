@@ -240,6 +240,7 @@ class Assembler { // For parsing and converting assembly code to machine code
     }
 
     Command parseCommand(string command) { // Convert command to Command object
+
         Command c;
         unsigned int imm;
         stringstream ss(command);
@@ -249,11 +250,8 @@ class Assembler { // For parsing and converting assembly code to machine code
         c.name = word;
 
         while(ss >> word) {
-            if(word[0] == 'x') {
-                c.operands.push_back(parseRegister(word));
-            } else {
-                imm = stoi(word);
-            }
+            if(word[0] == 'x') c.operands.push_back(parseRegister(word));
+            else imm = stoi(word);
         }
 
         c.operands.push_back(imm);
@@ -261,57 +259,47 @@ class Assembler { // For parsing and converting assembly code to machine code
     }
 
     void convertData() { // Convert data segment to machine code
-        unsigned int address = 0x10000000;
+
         unsigned int size;
         stringstream ss;
         string word, label;
 
         for(string line : data) {
-            ss << line;
-            ss >> word;
-            if(word.back() == ':') {
-                label = word.substr(0, word.size() - 1);
-                trim(label);
-                addressLookup[label] = address;
-            } else if(word == ".asciiz") {
-                ss >> word;
-                for(char c : word) machineCode.push_back({address++, c});
-            } else {
-                size = sizeLookup[word];
-                while(ss >> word) {
-                    machineCode.push_back({address, stoi(word)});
-                    address += size;
-                }
-            }
+                       
         }
     }
 
-    void clean(string &line) { // Remove comments, commas, parantheses and trailing spaces
+    void clean(string &line) { // Remove comments and trailing spaces
         line = line.substr(0, line.find('#'));
         trim(line);
     }
 
-    string extractLabel(string &line) { // Extract label from line
-        if(line.find(':') == string::npos) return "";
-        string label = line.substr(0, line.find(':') + 1);
-        line = line.substr(line.find_last_of(':') + 1);
-        return label;
+    vector<string> extractLabels(string &line) { // Extract labels from line
+        vector<string> labels;
+        if(line.find(':') == string::npos) return labels;
+        string label = line.substr(0, line.find(':'));
+        line = line.substr(line.find(':') + 1);
+        trim(label);
+        labels = extractLabels(line);
+        labels.push_back(label);
+        return labels;
     }
-
 
     void parse(string path) { // Parse the assembly code into a standard format
 
         ifstream file(path);
         string line, word;
+        vector<string> labels;
         vector<string> *current = &text;
-
         unsigned int address = 0x10000000;
         unsigned int pc = 0;
+        map<string, unsigned int> *lookup = &addressLookup;
+        unsigned int *currentAddress = &pc;
         
         while(getline(file, line)) {
-            word = extractLabel(line);
-            if(word != "") labelLookup[word] = pc;
             clean(line);
+            labels = extractLabels(line);
+            for(string label : labels) (*lookup)[label] = *currentAddress;
             word = line.substr(0, line.find(' '));
             if(word == ".data") current = &data;
             else if(word == ".text") current = &text;
