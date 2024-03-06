@@ -1,15 +1,17 @@
-#include<iostream>
-#include<algorithm>
-#include<sstream>
-#include<vector>
-#include<map>
-#include<fstream>
+#include <iostream>
+#include <algorithm>
+#include <sstream>
+#include <vector>
+#include <map>
+#include <fstream>
+
+#include "assembler.h"
 
 using namespace std;
 
 // Utility Functions
 
-unsigned int clip(unsigned int x, int left, int right) {
+unsigned int clip(unsigned int x, int left, int right = 0) {
     return (x >> right) & ((1 << (left - right + 1)) - 1);
 }
 
@@ -18,156 +20,204 @@ void trim(string &s) {
     s.erase(s.find_last_not_of(" \t\n") + 1);
 }
 
-// Template for converting commands of different formats to machine code
+// Assembler Functions
 
-class Instruction { // Parent class for all instructions
+Assembler::Assembler(string path) {
+    parse(path);
+}
+
+unsigned int Assembler::parseRegister(string reg) {
+    if(reg[0] != 'x') reg = registerLookup[reg];
+    return stoi(reg.substr(1));
+}
+
+unsigned int Assembler::parseImmediate(string imm) {
+    return stoi(imm);
+}
+
+void Assembler::clean(string &line) {
+    line = line.substr(0, line.find('#'));
+    trim(line);
+}
+
+vector<string> Assembler::extractLabels(string &line) {
+    vector<string> labels;
+    if(line.find(':') == string::npos) return labels;
+    string label = line.substr(0, line.find(':'));
+    line = line.substr(line.find(':') + 1);
+    trim(label);
+    labels = extractLabels(line);
+    labels.push_back(label);
+    return labels;
+}
+
+void Assembler::parseData(unsigned int &address, string line) {
+    
+    stringstream ss(line);
+    string word;
+    unsigned int value;
+    unsigned int size;
+
+    ss >> word;
+
+    if(word == ".asciiz") {
+        ss >> word;
+        word = word.substr(1, word.size() - 2);
+        reverse(word.begin(), word.end());
+        for(char c : word) machineCode.push_back({address++, c});
+    } else {
+        size = sizeLookup[word];
+        while(ss >> word) {
+            value = stoi(word);
+            for(int i = 0; i < size; i++) {
+                machineCode.push_back({address++, value & 0xff});
+                value >>= 8;
+            }
+        }
+    }
+}
+
+void Assembler::parse(string path) {
+
+    ifstream file(path);
+    string line, word;
+    vector<string> labels;
+    map<string, unsigned int> *lookup = &labelLookup;
+    unsigned int pc = 0;
+    unsigned int address = 0x10000000;
+    unsigned int *currentAddress = &pc;
+    bool data = false;
+    
+    while(getline(file, line)) {
+
+        clean(line);
+        labels = extractLabels(line);
+        for(string label : labels) (*lookup)[label] = *currentAddress;
+        if(line.empty()) continue;
+
+        word = line.substr(0, line.find(' '));
+
+        if(word == ".data") data = true;
+        else if(word == ".text") data = false;
+
+        else {
+            if(data) parseData(address, line);
+            else {
+                commands.push_back(line);
+                pc += 4;
+            }
+        }
+    }
+}
+
+int main() { 
+
+    return 0;
+}
+
+Instruction::Instruction(unsigned int opcode) : opcode(opcode) {}
+
+class R : public Instruction { // R-type instruction format
 
     public:
-        static map<string, Instruction*> commandLookup; // See below
-        unsigned int opcode;
-        virtual unsigned int toMachineCode() = 0; // Convert command to machine code
-        virtual void setOperands(vector<unsigned int> operands) = 0; // Set operands of the command passed as a vector containing registers first and then immediate value
+    unsigned int rd, rs1, rs2, funct3, funct7;
+
+    unsigned int toMachineCode() {
+        return (funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode;
+    }
+
+    void setOperands(vector<string> &operands, unsigned int pc, Assembler &assembler) {
+        rd = assembler.parseRegister(operands[0]);
+        rs1 = assembler.parseRegister(operands[1]);
+        rs2 = assembler.parseRegister(operands[2]);
+    }
+
+    R(unsigned int opcode, unsigned int funct3, unsigned int funct7) : Instruction(opcode), funct3(funct3), funct7(funct7) {}
 };
 
-class R : public Instruction { // R-Format Instructions
-
-    unsigned int rd, funct3, rs1, rs2, funct7;
+class I : public Instruction { // I-type instruction format
 
     public:
+    unsigned int rd, rs1, imm, funct3;
 
-        R(unsigned int opcode, unsigned int funct3, unsigned int funct7) {
-            this->opcode = opcode;
-            this->funct3 = funct3;
-            this->funct7 = funct7;
-        }
+    unsigned int toMachineCode() {
+        return (imm << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode;
+    }
 
-        unsigned int toMachineCode() {
-            return (funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode;
-        }
+    void setOperands(vector<string> &operands, unsigned int pc, Assembler &assembler) {
 
-        void setOperands(vector<unsigned int> operands) {
-            rd = operands[0];
-            rs1 = operands[1];
-            rs2 = operands[2];
-        }
+    }
+
+    I(unsigned int opcode, unsigned int funct3) : Instruction(opcode), funct3(funct3), imm(0) {}
+    I(unsigned int opcode, unsigned int funct3, unsigned int funct7) : Instruction(opcode), funct3(funct3), imm(funct7 << 5) {}
 };
 
-class I : public Instruction { // I-Format Instructions
-
-    unsigned int rd, funct3, rs1, imm;
+class S : public Instruction { // S-type instruction format
 
     public:
-        
-        I(unsigned int opcode, unsigned int funct3) {
-            this->opcode = opcode;
-            this->funct3 = funct3;
-            imm = 0;
-        }
+    unsigned int rs1, rs2, imm, funct3;
 
-        I(unsigned int opcode, unsigned int funct3, unsigned int funct7) {
-            this->opcode = opcode;
-            this->funct3 = funct3;
-            this->imm = funct7 << 5;
-        }
+    unsigned int toMachineCode() {
+        unsigned int imm1 = clip(imm, 4, 0);
+        unsigned int imm2 = clip(imm, 11, 5);
+        return (imm2 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (imm1 << 7) | opcode;
+    }
 
-        unsigned int toMachineCode() {
-            return (imm << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode;
-        }
-        
-        void setOperands(vector<unsigned int> operands) {
-            rd = operands[0];
-            rs1 = operands[1];
-            imm = operands[2];
-        }
+    void setOperands(vector<string> &operands, unsigned int pc, Assembler &assembler) {
+
+    }
+
+    S(unsigned int opcode, unsigned int funct3) : Instruction(opcode), funct3(funct3) {}
 };
 
-class S : public Instruction { // S-Format Instructions
-
-    unsigned int funct3, rs1, rs2, imm;
+class SB : public Instruction { // SB-type instruction format
 
     public:
+    unsigned int rs1, rs2, imm, funct3;
 
-        S(unsigned int opcode, unsigned int funct3) {
-            this->opcode = opcode;
-            this->funct3 = funct3;
-        }
+    unsigned int toMachineCode() {
+        unsigned int imm1 = clip(imm, 3, 0) << 1 | clip(imm, 10, 10);
+        unsigned int imm2 = clip(imm, 11, 11) << 6 | clip(imm, 9, 4);
+        return (imm2 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (imm1 << 7) | opcode;
+    }
 
-        unsigned int toMachineCode() {
-            unsigned int imm1 = clip(imm, 4, 0);
-            unsigned int imm2 = clip(imm, 11, 5);
-            return (imm2 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (imm1 << 7) | opcode;
-        }
+    void setOperands(vector<string> &operands, unsigned int pc, Assembler &assembler) {
 
-        void setOperands(vector<unsigned int> operands) {
-            rs2 = operands[0];
-            rs1 = operands[1];
-            imm = operands[2];
-        }
+    }
+
+    SB(unsigned int opcode, unsigned int funct3) : Instruction(opcode), funct3(funct3) {}
 };
 
-class SB : public Instruction { // SB-Format Instructions
-
-    unsigned int funct3, rs1, rs2, imm;
+class U : public Instruction { // U-type instruction format
 
     public:
-
-        SB(unsigned int opcode, unsigned int funct3) {
-            this->opcode = opcode;
-            this->funct3 = funct3;
-        }
-
-        unsigned int toMachineCode() {
-            unsigned int imm1 = clip(imm, 3, 0) << 1 | clip(imm, 10, 10);
-            unsigned int imm2 = clip(imm, 11, 11) << 6 | clip(imm, 9, 4);
-            return (imm2 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (imm1 << 7) | opcode;
-        }
-
-        void setOperands(vector<unsigned int> operands) {
-            rs1 = operands[0];
-            rs2 = operands[1];
-            imm = operands[2];
-        }
-};
-
-class U : public Instruction { // U-Format Instructions
-
     unsigned int rd, imm;
 
-    public:
+    unsigned int toMachineCode() {
+        return (imm << 12) | (rd << 7) | opcode;
+    }
 
-        U(unsigned int opcode) {
-            this->opcode = opcode;
-        }
+    void setOperands(vector<string> &operands, unsigned int pc, Assembler &assembler) {}
 
-        unsigned int toMachineCode() {
-            return (imm << 12) | (rd << 7) | opcode;
-        }
-
-        void setOperands(vector<unsigned int> operands) {
-            rd = operands[0];
-            imm = operands[1];
-        }
+    U(unsigned int opcode) : Instruction(opcode) {}
 };
 
-class UJ : public Instruction { // UJ-Format Instructions
-
-    unsigned int rd, imm;
+class UJ : public Instruction { // UJ-type instruction format
 
     public:
+    unsigned int rd, imm;
 
-        UJ(unsigned int opcode) {
-            this->opcode = opcode;
-        }
+    unsigned int toMachineCode() {
+        unsigned int imm1 = clip(imm, 19, 19) << 19 | clip(imm, 9, 0) << 9 | clip(imm, 10, 10) << 8 | clip(imm, 18, 11);
+        return (imm1 << 12) | (rd << 7) | opcode;
+    }
 
-        unsigned int toMachineCode() {
-            unsigned int imm1 = clip(imm, 19, 19) << 19 | clip(imm, 9, 0) << 9 | clip(imm, 10, 10) << 8 | clip(imm, 18, 11);
-            return (imm1 << 12) | (rd << 7) | opcode;
-        }
+    void setOperands(vector<string> &operands, unsigned int pc, Assembler &assembler) {
+        rd = assembler.parseRegister(operands[0]);
+        imm = assembler.parseImmediate(operands[1]);
+    }
 
-        void setOperands(vector<unsigned int> operands) {
-            rd = operands[0];
-            imm = operands[1];
-        }
+    UJ(unsigned int opcode) : Instruction(opcode) {}
 };
 
 map<string, Instruction*> Instruction::commandLookup = { // Returns the instruction object corresponding to the command name
@@ -208,110 +258,6 @@ map<string, Instruction*> Instruction::commandLookup = { // Returns the instruct
     {"lui",    new U(0x37)},
 
     {"jal",    new UJ(0x6f)},
-};
-
-class Assembler { // For parsing and converting assembly code to machine code
-
-    class Command { // Each command is converted to this format after parsing
-        public:
-            string name;
-            vector<unsigned int> operands; // Contains registers (in the order they appear in the command) first and then immediate value
-    };
-
-    static map<string, string> registerLookup; // See below
-    static map<string, unsigned int> sizeLookup; // See below
-
-    map<string, unsigned int> addressLookup; // Contains the address of each label
-    map<string, unsigned int> labelLookup; // Contains the program counter value of each labelLookup
-    vector<string> data; // Contains the data section of the assembly code
-    vector<string> text; // Contains the text section of the assembly code
-    vector<pair<unsigned int, unsigned int>> machineCode; // Contains the machine code of the text section
-
-
-    unsigned int parseRegister(string reg) { // Convert register name to register number
-        reg.erase(0, 1);
-        return stoi(reg);
-    }
-
-    unsigned int toMachineCode(Command command) { // Convert command to machine code
-        Instruction* instruction = Instruction::commandLookup[command.name];
-        instruction->setOperands(command.operands);
-        return instruction->toMachineCode();
-    }
-
-    Command parseCommand(string command) { // Convert command to Command object
-
-        Command c;
-        unsigned int imm;
-        stringstream ss(command);
-        string word;
-
-        ss >> word;
-        c.name = word;
-
-        while(ss >> word) {
-            if(word[0] == 'x') c.operands.push_back(parseRegister(word));
-            else imm = stoi(word);
-        }
-
-        c.operands.push_back(imm);
-        return c;
-    }
-
-    void convertData() { // Convert data segment to machine code
-
-        unsigned int size;
-        stringstream ss;
-        string word, label;
-
-        for(string line : data) {
-                       
-        }
-    }
-
-    void clean(string &line) { // Remove comments and trailing spaces
-        line = line.substr(0, line.find('#'));
-        trim(line);
-    }
-
-    vector<string> extractLabels(string &line) { // Extract labels from line
-        vector<string> labels;
-        if(line.find(':') == string::npos) return labels;
-        string label = line.substr(0, line.find(':'));
-        line = line.substr(line.find(':') + 1);
-        trim(label);
-        labels = extractLabels(line);
-        labels.push_back(label);
-        return labels;
-    }
-
-    void parse(string path) { // Parse the assembly code into a standard format
-
-        ifstream file(path);
-        string line, word;
-        vector<string> labels;
-        vector<string> *current = &text;
-        unsigned int address = 0x10000000;
-        unsigned int pc = 0;
-        map<string, unsigned int> *lookup = &addressLookup;
-        unsigned int *currentAddress = &pc;
-        
-        while(getline(file, line)) {
-            clean(line);
-            labels = extractLabels(line);
-            for(string label : labels) (*lookup)[label] = *currentAddress;
-            word = line.substr(0, line.find(' '));
-            if(word == ".data") current = &data;
-            else if(word == ".text") current = &text;
-            else current->push_back(line);
-        }
-    }
-
-    public:
-
-        Assembler(string filename) {
-            parse(filename);
-        }
 };
 
 map<string, string> Assembler::registerLookup = {
@@ -358,7 +304,4 @@ map<string, unsigned int> Assembler::sizeLookup = {
     {".dword", 8},
 };
 
-int main() { 
 
-    return 0;
-}
