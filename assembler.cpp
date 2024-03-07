@@ -1,3 +1,4 @@
+#include <ios>
 #include <iostream>
 #include <algorithm>
 #include <sstream>
@@ -5,6 +6,7 @@
 #include <map>
 #include <fstream>
 #include <string>
+#include <iomanip>
 
 #include "assembler.h"
 
@@ -21,10 +23,17 @@ void trim(string &s) {
     s.erase(s.find_last_not_of(" \t\n") + 1);
 }
 
+unsigned int toInt(string s) {
+    if(s.substr(0, 2) == "0x") return stoi(s, nullptr, 16);
+    else if(s.substr(0,2) == "0b") return stoi(s, nullptr, 2);
+    else return stoi(s);
+}
+
 // Assembler Functions
 
 Assembler::Assembler(string path) {
     parse(path);
+    convertText();
 }
 
 unsigned int Assembler::parseRegister(string reg) {
@@ -35,12 +44,14 @@ unsigned int Assembler::parseRegister(string reg) {
 unsigned int Assembler::parseImmediate(string imm, unsigned int pc) {
     if(addressLookup.find(imm) != addressLookup.end()) return addressLookup[imm];
     else if(labelLookup.find(imm) != labelLookup.end()) return labelLookup[imm] - pc;
-    else return stoi(imm);
+    else return toInt(imm);
 }
 
 void Assembler::clean(string &line) {
     line = line.substr(0, line.find('#'));
     replace(line.begin(), line.end(), ',', ' ');
+    replace(line.begin(), line.end(), '(', ' ');
+    replace(line.begin(), line.end(), ')', ' ');
     trim(line);
 }
 
@@ -61,11 +72,12 @@ unsigned int Assembler::toMachineCode(Command command) {
     return instruction->toMachineCode();
 }
 
+void Assembler::convertText() {
+    for(Command command : commands) machineCode.push_back({command.pc, toMachineCode(command)});
+}
+
 void Assembler::parseText(unsigned int &pc, string line) {
 
-    bool disp = line.find('(') != string::npos;
-    replace(line.begin(), line.end(), '(', ' ');
-    replace(line.begin(), line.end(), ')', ' ');
     stringstream ss(line);
     string word;
     Command command;
@@ -75,9 +87,8 @@ void Assembler::parseText(unsigned int &pc, string line) {
     command.pc = pc;
 
     while(ss >> word) command.operands.push_back(word);
-    if(disp) command.operands.push_back("disp");
 
-    machineCode.push_back({pc, toMachineCode(command)});
+    commands.push_back(command);
     pc += 4;
 }
 
@@ -91,16 +102,18 @@ void Assembler::parseData(unsigned int &address, string line) {
     ss >> word;
 
     if(word == ".asciiz") {
+
         ss >> word;
         word = word.substr(1, word.size() - 2);
         reverse(word.begin(), word.end());
-        for(char c : word) machineCode.push_back({address++, c});
+        for(char c : word) preloadedData.push_back({address++, c});
     } else {
+
         size = sizeLookup[word];
         while(ss >> word) {
             value = stoi(word);
             for(int i = 0; i < size; i++) {
-                machineCode.push_back({address++, value & 0xff});
+                preloadedData.push_back({address++, value & 0xff});
                 value >>= 8;
             }
         }
@@ -131,8 +144,34 @@ void Assembler::parse(string path) {
     }
 }
 
-int main() { 
+void Assembler::write(string path) {
 
+    ofstream file(path);
+
+    for(auto data : preloadedData) {
+        file << "0x" << hex << uppercase << data.first << ' ';
+        file << "0x" << hex << uppercase << setw(2) << setfill('0') << data.second << endl;
+    }
+
+    file << endl;
+
+    for(auto code : machineCode) {
+        file << "0x" << left << setw(8) << setfill(' ') << hex << uppercase << code.first << ' ';
+        file << "0x" << right << hex << uppercase << setw(8) << setfill('0') << code.second << endl;
+    }
+}
+
+// User Interface
+
+void assemble(string path) {
+    Assembler assembler(path);
+    path.erase(path.find_last_of('.'));
+    assembler.write(path + ".mc");
+}
+
+int main() {
+    string path;
+    while(cin >> path && getchar() != '\n') assemble(path);
     return 0;
 }
 
@@ -168,7 +207,15 @@ class I : public Instruction { // I-type instruction format
     }
 
     void setOperands(vector<string> &operands, unsigned int pc, Assembler *assembler) {
-
+        if(opcode == 0x03) {
+            rd = assembler->parseRegister(operands[0]);
+            rs1 = assembler->parseRegister(operands[2]);
+            imm = assembler->parseImmediate(operands[1], pc);
+        } else {
+            rd = assembler->parseRegister(operands[0]);
+            rs1 = assembler->parseRegister(operands[1]);
+            imm = assembler->parseImmediate(operands[2], pc);
+        }
     }
 
     I(unsigned int opcode, unsigned int funct3) : Instruction(opcode), funct3(funct3), imm(0) {}
@@ -187,7 +234,9 @@ class S : public Instruction { // S-type instruction format
     }
 
     void setOperands(vector<string> &operands, unsigned int pc, Assembler *assembler) {
-
+        rs1 = assembler->parseRegister(operands[2]);
+        rs2 = assembler->parseRegister(operands[0]);
+        imm = assembler->parseImmediate(operands[1], pc);
     }
 
     S(unsigned int opcode, unsigned int funct3) : Instruction(opcode), funct3(funct3) {}
@@ -199,13 +248,15 @@ class SB : public Instruction { // SB-type instruction format
     unsigned int rs1, rs2, imm, funct3;
 
     unsigned int toMachineCode() {
-        unsigned int imm1 = clip(imm, 3, 0) << 1 | clip(imm, 10, 10);
-        unsigned int imm2 = clip(imm, 11, 11) << 6 | clip(imm, 9, 4);
+        unsigned int imm1 = clip(imm, 4, 1) << 1 | clip(imm, 11, 11);
+        unsigned int imm2 = clip(imm, 12, 12) << 6 | clip(imm, 10, 5);
         return (imm2 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (imm1 << 7) | opcode;
     }
 
     void setOperands(vector<string> &operands, unsigned int pc, Assembler *assembler) {
-
+        rs1 = assembler->parseRegister(operands[0]);
+        rs2 = assembler->parseRegister(operands[1]);
+        imm = assembler->parseImmediate(operands[2], pc);
     }
 
     SB(unsigned int opcode, unsigned int funct3) : Instruction(opcode), funct3(funct3) {}
@@ -220,7 +271,10 @@ class U : public Instruction { // U-type instruction format
         return (imm << 12) | (rd << 7) | opcode;
     }
 
-    void setOperands(vector<string> &operands, unsigned int pc, Assembler *assembler) {}
+    void setOperands(vector<string> &operands, unsigned int pc, Assembler *assembler) {
+        rd = assembler->parseRegister(operands[0]);
+        imm = assembler->parseImmediate(operands[1], pc);
+    }
 
     U(unsigned int opcode) : Instruction(opcode) {}
 };
@@ -231,7 +285,7 @@ class UJ : public Instruction { // UJ-type instruction format
     unsigned int rd, imm;
 
     unsigned int toMachineCode() {
-        unsigned int imm1 = clip(imm, 19, 19) << 19 | clip(imm, 9, 0) << 9 | clip(imm, 10, 10) << 8 | clip(imm, 18, 11);
+        unsigned int imm1 = clip(imm, 20, 20) << 19 | clip(imm, 10, 1) << 9 | clip(imm, 11, 11) << 8 | clip(imm, 19, 12);
         return (imm1 << 12) | (rd << 7) | opcode;
     }
 
