@@ -41,8 +41,6 @@ unsigned int Assembler::parseImmediate(string imm, unsigned int pc) {
 void Assembler::clean(string &line) {
     line = line.substr(0, line.find('#'));
     replace(line.begin(), line.end(), ',', ' ');
-    replace(line.begin(), line.end(), '(' , ' ');
-    replace(line.begin(), line.end(), ')' , ' ');
     trim(line);
 }
 
@@ -65,6 +63,9 @@ unsigned int Assembler::toMachineCode(Command command) {
 
 void Assembler::parseText(unsigned int &pc, string line) {
 
+    bool disp = line.find('(') != string::npos;
+    replace(line.begin(), line.end(), '(', ' ');
+    replace(line.begin(), line.end(), ')', ' ');
     stringstream ss(line);
     string word;
     Command command;
@@ -74,6 +75,7 @@ void Assembler::parseText(unsigned int &pc, string line) {
     command.pc = pc;
 
     while(ss >> word) command.operands.push_back(word);
+    if(disp) command.operands.push_back("disp");
 
     machineCode.push_back({pc, toMachineCode(command)});
     pc += 4;
@@ -125,11 +127,7 @@ void Assembler::parse(string path) {
 
         if(word == ".data") data = true;
         else if(word == ".text") data = false;
-
-        else {
-            if(data) parseData(address, line);
-            else parseText(pc, line);
-        }
+        else data ? parseData(address, line) : parseText(pc, line);
     }
 }
 
