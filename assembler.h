@@ -25,9 +25,12 @@ class Assembler {
 
     map<string, unsigned int> addressLookup; // Contains the address of each label
     map<string, unsigned int> labelLookup; // Contains the program counter value of each labelLookup
-    vector<pair<unsigned int, unsigned int>> machineCode; // Contains address and machine code pairs
+    vector<Command> commands; // Contains the parsed commands
+    vector<pair<unsigned int, unsigned int>> preloadedData; // Contains the address and value of each preloaded data
+    vector<pair<unsigned int, unsigned int>> machineCode; // Contains program counter and machine code pairs
 
     unsigned int toMachineCode(Command command); // Converts the command to machine code
+    void convertText(); // Converts the parsed text segment to machine code
     void parseData(unsigned int &address, string line); // Parses a single line of the data segment and adds it to the machine code
     void parseText(unsigned int &pc, string line); // Parses a single line of the text segment and converts it to machine code
     void parse(string path); // Parses the entire file
@@ -37,6 +40,7 @@ class Assembler {
     Assembler(string path);
     static unsigned int parseRegister(string reg); // Returns the number corresponding to the register
     unsigned int parseImmediate(string imm, unsigned int pc); // Returns the number corresponding to the immediate value
+    void write(string path); // Writes the machine code to the file
 };
 
 class Instruction { // Base class for all instruction formats
