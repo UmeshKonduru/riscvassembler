@@ -30,6 +30,7 @@ unsigned int toInt(string s) {
 }
 
 bool notInteger(string s) {
+    if(s[0] == '-') s = s.substr(1);
     return s.find_first_not_of("0123456789") != string::npos;
 }
 
@@ -84,7 +85,7 @@ vector<string> Assembler::extractLabels(string &line) {
 }
 
 unsigned int Assembler::toMachineCode(Command command) {
-    if(Instruction::commandLookup.find(command.name)==Instruction::commandLookup.end()) { cout << "Error: Invalid command name."; exit(1); }
+    if(Instruction::commandLookup.find(command.name)==Instruction::commandLookup.end()) { cout << "Error: Invalid command name." << endl; exit(1); }
     Instruction *instruction = Instruction::commandLookup[command.name];
     instruction->setOperands(command.operands, command.pc, this);
     return instruction->toMachineCode();
@@ -120,13 +121,11 @@ void Assembler::parseData(unsigned int &address, string line) {
     ss >> word;
 
     if(word == ".asciiz") {
-
         ss >> word;
         word = word.substr(1, word.size() - 2);
         reverse(word.begin(), word.end());
         for(char c : word) preloadedData.push_back({address++, c});
     } else {
-
         size = sizeLookup[word];
         while(ss >> word) {
             value = stoi(word);
@@ -208,6 +207,10 @@ class R : public Instruction { // R-type instruction format
     }
 
     void setOperands(vector<string> &operands, unsigned int pc, Assembler *assembler) {
+        if(operands.size() != 3) {
+            cout << "Error: Invalid number of operands." << endl;
+            exit(1);
+        }
         rd = assembler->parseRegister(operands[0]);
         rs1 = assembler->parseRegister(operands[1]);
         rs2 = assembler->parseRegister(operands[2]);
@@ -226,6 +229,10 @@ class I : public Instruction { // I-type instruction format
     }
 
     void setOperands(vector<string> &operands, unsigned int pc, Assembler *assembler) {
+        if(operands.size() != 3) {
+            cout << "Error: Invalid number of operands." << endl;
+            exit(1);
+        }        
         if(opcode == 0x03) {
             rd = assembler->parseRegister(operands[0]);
             rs1 = assembler->parseRegister(operands[2]);
@@ -234,7 +241,8 @@ class I : public Instruction { // I-type instruction format
             rd = assembler->parseRegister(operands[0]);
             rs1 = assembler->parseRegister(operands[1]);
             imm = assembler->parseImmediate(operands[2], pc);
-            if(imm >= (1 << 12)) {
+            int x = imm;
+            if(x < -2048 || x > 2047) {
                 cout << "Error: Immediate value is out of range." << endl;
                 exit(1);
             }
@@ -257,10 +265,15 @@ class S : public Instruction { // S-type instruction format
     }
 
     void setOperands(vector<string> &operands, unsigned int pc, Assembler *assembler) {
+        if(operands.size() != 3) {
+            cout << "Error: Invalid number of operands." << endl;
+            exit(1);
+        }
         rs1 = assembler->parseRegister(operands[2]);
         rs2 = assembler->parseRegister(operands[0]);
         imm = assembler->parseImmediate(operands[1], pc);
-        if(imm >= (1 << 12)) {
+        int x = imm;
+        if(x < -2048 || x > 2047) {
             cout << "Error: Immediate value is out of range." << endl;
             exit(1);
         }
@@ -281,10 +294,15 @@ class SB : public Instruction { // SB-type instruction format
     }
 
     void setOperands(vector<string> &operands, unsigned int pc, Assembler *assembler) {
+        if(operands.size() != 3) {
+            cout << "Error: Invalid number of operands." << endl;
+            exit(1);
+        }
         rs1 = assembler->parseRegister(operands[0]);
         rs2 = assembler->parseRegister(operands[1]);
         imm = assembler->parseImmediate(operands[2], pc);
-        if(imm >= (1 << 12)) {
+        int x = imm;
+        if(x < -4096 || x > 4095) {
             cout << "Error: Immediate value is out of range." << endl;
             exit(1);
         }
@@ -303,9 +321,14 @@ class U : public Instruction { // U-type instruction format
     }
 
     void setOperands(vector<string> &operands, unsigned int pc, Assembler *assembler) {
+        if(operands.size() != 2) {
+            cout << "Error: Invalid number of operands." << endl;
+            exit(1);
+        }
         rd = assembler->parseRegister(operands[0]);
         imm = assembler->parseImmediate(operands[1], pc);
-        if(imm >= (1 << 20)) {
+        int x = imm;
+        if(x < -(1 << 21) || x > (1 << 21) - 1) {
             cout << "Error: Immediate value is out of range." << endl;
             exit(1);
         }
@@ -325,9 +348,14 @@ class UJ : public Instruction { // UJ-type instruction format
     }
 
     void setOperands(vector<string> &operands, unsigned int pc, Assembler *assembler) {
+        if(operands.size() != 2) {
+            cout << "Error: Invalid number of operands." << endl;
+            exit(1);
+        }
         rd = assembler->parseRegister(operands[0]);
         imm = assembler->parseImmediate(operands[1], pc);
-        if(imm >= (1 << 20)) {
+        int x = imm;
+        if(x < -(1 << 21) || x > (1 << 21) - 1) {
             cout << "Error: Immediate value is out of range." << endl;
             exit(1);
         }
