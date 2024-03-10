@@ -43,18 +43,24 @@ Assembler::Assembler(string path) {
 unsigned int Assembler::parseRegister(string reg) {
     unsigned int regNum;
     if(reg[0] != 'x') {
-        if(registerLookup.find(reg) == registerLookup.end()) throw runtime_error("Error: Invalid register name.");
+        if(registerLookup.find(reg) == registerLookup.end()) {
+            cout << "Error: Invalid register name." << endl;
+            exit(1);
+        }
         reg = registerLookup[reg];
     }
     regNum = stoi(reg.substr(1));
-    if(regNum > 31) throw runtime_error("Error: Invalid register number.");
+    if(regNum > 31) {
+        cout << "Error: Invalid register number." << endl;
+        exit(1);
+    }
     return regNum;
 }
 
 unsigned int Assembler::parseImmediate(string imm, unsigned int pc) {
     if(addressLookup.find(imm) != addressLookup.end()) return addressLookup[imm];
     else if(labelLookup.find(imm) != labelLookup.end()) return labelLookup[imm] - pc;
-    else if(notInteger(imm)) throw runtime_error("Error: Invalid immediate value.");
+    else if(notInteger(imm)) { cout << "Error: Invalid immediate value." << endl; exit(1); }
     else return toInt(imm);
 }
 
@@ -78,7 +84,7 @@ vector<string> Assembler::extractLabels(string &line) {
 }
 
 unsigned int Assembler::toMachineCode(Command command) {
-    if(Instruction::commandLookup.find(command.name)==Instruction::commandLookup.end()) throw runtime_error("Error: Invalid command name.");
+    if(Instruction::commandLookup.find(command.name)==Instruction::commandLookup.end()) { cout << "Error: Invalid command name."; exit(1); }
     Instruction *instruction = Instruction::commandLookup[command.name];
     instruction->setOperands(command.operands, command.pc, this);
     return instruction->toMachineCode();
@@ -183,7 +189,8 @@ void assemble(string path) {
 
 int main() {
     string path;
-    while(cin >> path && getchar() != '\n') assemble(path);
+    cin >> path;
+    assemble(path);
     return 0;
 }
 
@@ -227,7 +234,10 @@ class I : public Instruction { // I-type instruction format
             rd = assembler->parseRegister(operands[0]);
             rs1 = assembler->parseRegister(operands[1]);
             imm = assembler->parseImmediate(operands[2], pc);
-            if(imm >= (1 << 12)) throw runtime_error("Error: Immediate value is out of range.");
+            if(imm >= (1 << 12)) {
+                cout << "Error: Immediate value is out of range." << endl;
+                exit(1);
+            }
         }
     }
 
@@ -250,7 +260,10 @@ class S : public Instruction { // S-type instruction format
         rs1 = assembler->parseRegister(operands[2]);
         rs2 = assembler->parseRegister(operands[0]);
         imm = assembler->parseImmediate(operands[1], pc);
-        if(imm >= (1 << 12)) throw runtime_error("Error: Immediate value is out of range.");
+        if(imm >= (1 << 12)) {
+            cout << "Error: Immediate value is out of range." << endl;
+            exit(1);
+        }
     }
 
     S(unsigned int opcode, unsigned int funct3) : Instruction(opcode), funct3(funct3) {}
@@ -271,7 +284,10 @@ class SB : public Instruction { // SB-type instruction format
         rs1 = assembler->parseRegister(operands[0]);
         rs2 = assembler->parseRegister(operands[1]);
         imm = assembler->parseImmediate(operands[2], pc);
-        if(imm >= (1 << 12)) throw runtime_error("Error: Immediate value is out of range.");
+        if(imm >= (1 << 12)) {
+            cout << "Error: Immediate value is out of range." << endl;
+            exit(1);
+        }
     }
 
     SB(unsigned int opcode, unsigned int funct3) : Instruction(opcode), funct3(funct3) {}
@@ -289,7 +305,10 @@ class U : public Instruction { // U-type instruction format
     void setOperands(vector<string> &operands, unsigned int pc, Assembler *assembler) {
         rd = assembler->parseRegister(operands[0]);
         imm = assembler->parseImmediate(operands[1], pc);
-        if(imm >= (1 << 20)) throw runtime_error("Error: Immediate value is out of range.");
+        if(imm >= (1 << 20)) {
+            cout << "Error: Immediate value is out of range." << endl;
+            exit(1);
+        }
     }
 
     U(unsigned int opcode) : Instruction(opcode) {}
@@ -308,7 +327,10 @@ class UJ : public Instruction { // UJ-type instruction format
     void setOperands(vector<string> &operands, unsigned int pc, Assembler *assembler) {
         rd = assembler->parseRegister(operands[0]);
         imm = assembler->parseImmediate(operands[1], pc);
-        if(imm >= (1 << 20)) throw runtime_error("Error: Immediate value is out of range.");
+        if(imm >= (1 << 20)) {
+            cout << "Error: Immediate value is out of range." << endl;
+            exit(1);
+        }
     }
 
     UJ(unsigned int opcode) : Instruction(opcode) {}
